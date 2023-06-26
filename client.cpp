@@ -111,7 +111,7 @@ int main(int argc, char* argv[])
 
     // Log in
     {
-        snprintf(buf, 1024, "%s\n", username);
+        snprintf(buf, 1024, "1%s\n", username);
         send(clientSd, buf, strlen(buf), 0);
     }
     
@@ -238,9 +238,7 @@ int main(int argc, char* argv[])
             int bytes = recv(clientSd, buf, sizeof(buf), 0);
             if (bytes == 0)
             {
-                write_msg("Server disconnected");
-                fflush(0);
-                exit(0);
+                fatal("Server disconnected\n");
             }
             if (bytes < 0)
             {
@@ -273,11 +271,7 @@ int main(int argc, char* argv[])
 
 #ifndef _WIN32
         if (pfds[1].revents & (POLLERR | POLLHUP))
-        {
-            write_msg("Server disconnected");
-            fflush(0);
-            exit(0);
-        }
+            fatal("Server disconnected\n");
 #endif
     }
 }

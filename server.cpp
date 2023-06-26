@@ -45,8 +45,19 @@ public:
         while (true)
         {
             int bytes = recv(client_socket, recv_buf, sizeof(recv_buf), 0);
-            // if (bytes == 0) die();
-            // if (bytes < 0) die();
+            if (bytes == 0)
+            {
+                disconnect();
+                printf("Client disconnected before login message\n");
+                return;
+            }
+            if (bytes < 0)
+            {
+                disconnect();
+                printf("Client error before login message\n");
+                return;
+            }
+
             auto orig_size = message_buf.size();
             message_buf.resize(message_buf.size() + bytes);
             memcpy(&message_buf[orig_size], recv_buf, bytes);
@@ -54,7 +65,19 @@ public:
             auto found = std::find(message_buf.begin(), message_buf.end(), '\n');
             if (found != message_buf.end())
             {
-                username = std::string(message_buf.begin(), found);
+                if (message_buf.size() <= 1)
+                {
+                    disconnect();
+                    printf("Client sent malformed login message\n");
+                    return;
+                }
+                if (message_buf[0] != '1')
+                {
+                    disconnect();
+                    printf("Client tried to connect with unsupported version\n");
+                    return;
+                }
+                username = std::string(message_buf.begin() + 1, found);
                 message_buf.erase(message_buf.begin(), found + 1);
                 break;
             }
@@ -125,6 +148,15 @@ public:
             message_queue.messages.emplace_back(msg_buf);
             message_queue.cv.notify_all();
         }
+    }
+
+    void disconnect()
+    {
+        close(client_socket);
+        dead = true;
+
+        std::lock_guard lock(message_queue.mutex);
+        message_queue.cv.notify_all();
     }
 
     void run_send()
