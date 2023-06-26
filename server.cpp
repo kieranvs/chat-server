@@ -32,6 +32,13 @@ public:
     ClientThread(int sock)
     {
         client_socket = sock;
+
+        {
+            std::lock_guard lock(message_queue.mutex);
+            auto num_messages = message_queue.messages.size();
+            if (num_messages > 10) last_msg_id_sent = num_messages - 9;
+        }
+
         recv_thread.emplace(&ClientThread::run_recv, this);
         send_thread.emplace(&ClientThread::run_send, this);
     }
