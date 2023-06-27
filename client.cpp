@@ -111,9 +111,9 @@ int main(int argc, char* argv[])
                 editline_len = 0;
                 memset(editline, 0, sizeof(editline));
             }
-
-            refresh_editline();
-            fflush(0);
         }
+
+        refresh_editline();
+        fflush(0);
     }
 }
