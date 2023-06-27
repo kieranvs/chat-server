@@ -91,7 +91,7 @@ public:
                     printf("%s: Client sent malformed login message\n", ip_addr.c_str());
                     return;
                 }
-                if (message_buf[0] != '1')
+                if (message_buf[0] != 0x01)
                 {
                     disconnect();
                     print_timestamp();
