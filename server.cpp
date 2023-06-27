@@ -11,11 +11,20 @@
 #include <condition_variable>
 #include <poll.h>
 #include <algorithm>
+#include <arpa/inet.h>
+#include <ctime>
 
 void fatal(const char* msg)
 {
     printf("%s", msg);
     exit(-1);
+}
+
+void print_timestamp()
+{
+    auto timepoint = std::time(0);
+    std::tm* now = std::localtime(&timepoint);
+    printf("[%02d:%02d:%02d] ", now->tm_hour, now->tm_min, now->tm_sec);
 }
 
 struct MessageQueue
@@ -29,9 +38,10 @@ MessageQueue message_queue;
 class ClientThread
 {
 public:
-    ClientThread(int sock)
+    ClientThread(int sock, const std::string& id_string)
     {
         client_socket = sock;
+        ip_addr = id_string;
 
         {
             std::lock_guard lock(message_queue.mutex);
@@ -55,13 +65,15 @@ public:
             if (bytes == 0)
             {
                 disconnect();
-                printf("Client disconnected before login message\n");
+                print_timestamp();
+                printf("%s: Client disconnected before login message\n", ip_addr.c_str());
                 return;
             }
             if (bytes < 0)
             {
                 disconnect();
-                printf("Client error before login message\n");
+                print_timestamp();
+                printf("%s: Client error before login message\n", ip_addr.c_str());
                 return;
             }
 
@@ -75,13 +87,15 @@ public:
                 if (message_buf.size() <= 1)
                 {
                     disconnect();
-                    printf("Client sent malformed login message\n");
+                    print_timestamp();
+                    printf("%s: Client sent malformed login message\n", ip_addr.c_str());
                     return;
                 }
                 if (message_buf[0] != '1')
                 {
                     disconnect();
-                    printf("Client tried to connect with unsupported version\n");
+                    print_timestamp();
+                    printf("%s: Client tried to connect with unsupported version\n", ip_addr.c_str());
                     return;
                 }
                 username = std::string(message_buf.begin() + 1, found);
@@ -93,6 +107,8 @@ public:
         {
             char msg_buf[1024];
             snprintf(msg_buf, sizeof(msg_buf), "%s connected.\n", username.c_str());
+            print_timestamp();
+            printf("%s: connected as %s.\n", ip_addr.c_str(), username.c_str());
 
             std::lock_guard lock(message_queue.mutex);
             message_queue.messages.emplace_back(msg_buf);
@@ -115,6 +131,8 @@ public:
 
                     char msg_buf[1500];
                     snprintf(msg_buf, sizeof(msg_buf), "[%s] %s\n", username.c_str(), msg.data());
+                    print_timestamp();
+                    printf("%s", msg_buf);
 
                     std::lock_guard lock(message_queue.mutex);
                     message_queue.messages.emplace_back(msg_buf);
@@ -150,6 +168,8 @@ public:
         {
             char msg_buf[1024];
             snprintf(msg_buf, sizeof(msg_buf), "%s disconnected.\n", username.c_str());
+            print_timestamp();
+            printf("%s", msg_buf);
 
             std::lock_guard lock(message_queue.mutex);
             message_queue.messages.emplace_back(msg_buf);
@@ -192,6 +212,7 @@ private:
     int last_msg_id_sent = -1;
 
     std::string username;
+    std::string ip_addr;
 };
 
 int main(int argc, char *argv[])
@@ -215,7 +236,6 @@ int main(int argc, char *argv[])
 
     while (true)
     {
-        printf("Waiting for a client to connect...\n");
         listen(serverSd, 5); // listen for up to 5 requests at a time
 
         sockaddr_in newSockAddr{};
@@ -224,16 +244,21 @@ int main(int argc, char *argv[])
         int newSd = accept(serverSd, (sockaddr *)&newSockAddr, &newSockAddrSize);
         if(newSd < 0)
         {
+            print_timestamp();
             printf("Error accepting request from client!\n");
         }
         else
         {
-            printf("Connected with client!\n");
-            clients.push_back(new ClientThread(newSd));
+            char ip_buf[512];
+            snprintf(ip_buf, 512, "%s:%d", inet_ntoa(newSockAddr.sin_addr), (int)ntohs(newSockAddr.sin_port));
+            print_timestamp();
+            printf("Connection from %s\n", ip_buf);
+            clients.push_back(new ClientThread(newSd, std::string(ip_buf)));
         }
     }
     
     close(serverSd);
+    print_timestamp();
     printf("Server terminated\n");
     return 0;   
 }
