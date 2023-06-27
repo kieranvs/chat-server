@@ -111,7 +111,7 @@ int main(int argc, char* argv[])
 
     // Log in
     {
-        snprintf(buf, 1024, "1%s\n", username);
+        snprintf(buf, 1024, "%c%s\n", 0x01, username);
         send(clientSd, buf, strlen(buf), 0);
     }
     
