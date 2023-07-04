@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <ctime>
+#include <signal.h>
 
 void fatal(const char* msg)
 {
@@ -151,6 +152,14 @@ public:
                 int bytes = recv(client_socket, recv_buf, sizeof(recv_buf), 0);
                 if (bytes == 0) break;
                 if (bytes < 0) break;
+
+                // Basic sanitisation
+                for (int i = 0; i < bytes; i++)
+                {
+                    if (recv_buf[i] == '\b') recv_buf[i] = ' ';
+                    if (recv_buf[i] == '\0') recv_buf[i] = ' ';
+                }
+
                 auto orig_size = message_buf.size();
                 message_buf.resize(message_buf.size() + bytes);
                 memcpy(&message_buf[orig_size], recv_buf, bytes);
@@ -188,17 +197,42 @@ public:
 
     void run_send()
     {
+        std::vector<char> send_output_buffer;
         while (true)
         {
             if (dead) break;
-            std::unique_lock lock(message_queue.mutex);
-            while (message_queue.messages.size() > last_msg_id_sent + 1)
+
             {
-                const auto& msg = message_queue.messages[last_msg_id_sent + 1];
-                int send_result = send(client_socket, msg.data(), msg.length(), 0);
-                last_msg_id_sent += 1;
+                std::unique_lock lock(message_queue.mutex);
+                while (message_queue.messages.size() > last_msg_id_sent + 1)
+                {
+                    const auto& msg = message_queue.messages[last_msg_id_sent + 1];
+
+                    auto orig_size = send_output_buffer.size();
+                    send_output_buffer.resize(send_output_buffer.size() + msg.size());
+                    memcpy(&send_output_buffer[orig_size], msg.data(), msg.size());
+
+                    last_msg_id_sent += 1;
+                }
             }
-            message_queue.cv.wait(lock);
+
+            size_t bytes_sent = 0;
+            while (bytes_sent < send_output_buffer.size())
+            {
+                int send_result = send(client_socket, &send_output_buffer[bytes_sent], send_output_buffer.size() - bytes_sent, 0);
+                if (send_result == -1) return;
+                bytes_sent += send_result;
+            }
+            send_output_buffer.clear();
+
+            {
+                std::unique_lock lock(message_queue.mutex);
+
+                if (message_queue.messages.size() > last_msg_id_sent + 1)
+                    continue;
+                else
+                    message_queue.cv.wait(lock);
+            }
         }
     }
 
@@ -215,9 +249,15 @@ private:
     std::string ip_addr;
 };
 
+void sigpipe_handler(int signum)
+{
+}
+
 int main(int argc, char *argv[])
 {
     if (argc != 2) fatal("Usage: port\n");
+
+    sigaction(SIGPIPE, (const struct sigaction*)sigpipe_handler, NULL);
 
     int port = atoi(argv[1]);
     
