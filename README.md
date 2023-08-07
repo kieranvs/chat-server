@@ -12,6 +12,10 @@ Starter kit for the practical component of the lesson on sockets.
 |--------|------------------|
 | 1      | Version selector |
 
+### Version 3
+
+[Version 3 spec](spec/v3.md)
+
 ### Version 2
 
 1. Next the client sends the login packet:
